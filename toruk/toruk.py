@@ -1,20 +1,18 @@
-#!/usr/bin/python
-#
 # MIT License
 # br0k3ns0und
 
-from getpass import getpass
-import json
 import argparse
 import ConfigParser
+from getpass import getpass
+import json
 import time
-import pprint
-from prepare import *
+
+from colorama import init, Fore, Back, Style
+import requests
 
 
 # colorama init
 init(autoreset=True)
-pp = pprint.PrettyPrinter(indent=4)
 config = ConfigParser.RawConfigParser()
 falcon = requests.Session()
 parser = argparse.ArgumentParser()
@@ -180,7 +178,7 @@ def get_alerts(customer_name, quiet=False):
                       data=json.dumps(data_dict))
     try:
         if len(s10.json()['resources']) > 0:
-            #pp.pprint(s10.json())  # full json data set!
+            # print(json.dumps(s10.json(), indent=4))  # full json data set!
             cust_data = s10.json()
             for bucket in cust_data['resources']:
                 if bucket['name'] == 'status':
@@ -190,7 +188,7 @@ def get_alerts(customer_name, quiet=False):
                                 alert_str = info_format('alert', '{0}{1}{2} alert(s) detected!\n'.format(
                                     Fore.LIGHTRED_EX, value['count'], Fore.LIGHTWHITE_EX))
                                 alert_str += '----> {0}{1}{2}'.format(Fore.LIGHTGREEN_EX, customer_name, Style.RESET_ALL)
-                    #pp.pprint(bucket['buckets'])  # for testing!
+                    # print(json.dumps(bucket['buckets'], indent=4))  # for testing!
                                 return alert_str
     except KeyError:
         if not quiet:
@@ -212,7 +210,7 @@ def get_machines(customer_name, full=False):
         machine_info = falcon.get(url, headers=header)
         machines_str = '\n{0}\n{1}\n'.format(customer_name, '=' * len(customer_name))
         if full:
-            machines_str += pp.pformat(machine_info.json()['resources']) + '\n'
+            machines_str += json.dumps(machine_info.json()['resources'], indent=4) + '\n'
             return machines_str
         else:
             machines_str += '{0:<37} {1:<25} {2:<15} {3:<22}\n{4:<37} {5:<25} {6:<15} {7:<22}\n'.format(
@@ -230,28 +228,34 @@ def get_machines(customer_name, full=False):
 
 
 def main():
-    # must choose something to do
-    if args.systems < 1 and not args.alerts:
-        print info_format('alert', 'You must have something for toruk to do (-a or -s), exiting...')
-        exit(0)
-    # loop
-    if args.loop is not None:
-        print info_format('info', 'Loop mode selected')
-        print info_format('info', 'Running in a loop for {0} hour(s)'.format(args.loop))
-        if args.outfile is not None:
-            print info_format('alert', 'It is not advisable to output to a file while in loop mode, as the contents '
-                                       'will be overwritten with each loop')
-        timeout = time.time() + (60 * 60 * args.loop)
-        set_auth()
-        while time.time() < timeout:
+    print Fore.LIGHTRED_EX + art + Style.RESET_ALL
+    print title
+    try:
+        # must choose something to do
+        if args.systems < 1 and not args.alerts:
+            print info_format('alert', 'You must have something for toruk to do (-a or -s), exiting...')
+            exit(0)
+        # loop
+        if args.loop is not None:
+            print info_format('info', 'Loop mode selected')
+            print info_format('info', 'Running in a loop for {0} hour(s)'.format(args.loop))
+            if args.outfile is not None:
+                print info_format('alert', 'It is not advisable to output to a file while in loop mode, as the contents '
+                                           'will be overwritten with each loop')
+            timeout = time.time() + (60 * 60 * args.loop)
+            set_auth()
+            while time.time() < timeout:
+                toruk(args.alerts, args.systems, args.instance, args.outfile, args.quiet)
+                print info_format('sleep', 'Sleeping for {} minute(s)'.format(args.frequency))
+                # sleeps for the the number of minutes passed by parameter (default 1 minute)
+                time.sleep(args.frequency * 60)
+        else:
+            # no loop
+            set_auth()
             toruk(args.alerts, args.systems, args.instance, args.outfile, args.quiet)
-            print info_format('sleep', 'Sleeping for {} minute(s)'.format(args.frequency))
-            # sleeps for the the number of minutes passed by parameter (default 1 minute)
-            time.sleep(args.frequency * 60)
-    else:
-        # no loop
-        set_auth()
-        toruk(args.alerts, args.systems, args.instance, args.outfile, args.quiet)
+    except requests.ConnectionError:
+        print info_format('alert', 'You encountered a connection error, re-run')
+        exit(2)
 
 
 art = '''
@@ -325,10 +329,4 @@ title = '''{0}
 
 
 if __name__ == '__main__':
-    print Fore.LIGHTRED_EX + art + Style.RESET_ALL
-    print title
-    try:
-        main()
-    except requests.ConnectionError:
-        print info_format('alert', 'You encountered a connection error, re-run')
-        exit(2)
+    main()
